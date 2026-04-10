@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RVC Voice Converter</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f0f13;
+      color: #e0e0e0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem;
+    }
+
+    h1 {
+      font-size: 1.8rem;
+      font-weight: 700;
+      color: #a78bfa;
+      margin-bottom: 0.3rem;
+      letter-spacing: -0.02em;
+    }
+    .subtitle {
+      font-size: 0.875rem;
+      color: #6b7280;
+      margin-bottom: 2rem;
+    }
+
+    .card {
+      background: #1a1a24;
+      border: 1px solid #2d2d3d;
+      border-radius: 12px;
+      padding: 1.75rem;
+      width: 100%;
+      max-width: 580px;
+    }
+
+    .section-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #6b7280;
+      margin-bottom: 0.6rem;
+    }
+
+    .upload-zone {
+      border: 2px dashed #3d3d55;
+      border-radius: 8px;
+      padding: 1.2rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      position: relative;
+      margin-bottom: 1.25rem;
+    }
+    .upload-zone:hover, .upload-zone.dragover {
+      border-color: #a78bfa;
+      background: #1f1f2e;
+    }
+    .upload-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+    .upload-icon {
+      font-size: 1.75rem;
+      margin-bottom: 0.4rem;
+    }
+    .upload-text {
+      font-size: 0.85rem;
+      color: #9ca3af;
+    }
+    .upload-filename {
+      font-size: 0.8rem;
+      color: #a78bfa;
+      margin-top: 0.4rem;
+      font-weight: 500;
+      word-break: break-all;
+    }
+
+    .controls-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .control-group label {
+      display: block;
+      font-size: 0.8rem;
+      color: #9ca3af;
+      margin-bottom: 0.4rem;
+    }
+    .control-group input[type="range"] {
+      width: 100%;
+      accent-color: #a78bfa;
+      cursor: pointer;
+    }
+    .range-value {
+      font-size: 0.8rem;
+      color: #a78bfa;
+      font-weight: 600;
+      float: right;
+    }
+
+    button#convertBtn {
+      width: 100%;
+      padding: 0.9rem;
+      background: linear-gradient(135deg, #7c3aed, #a78bfa);
+      color: #fff;
+      font-size: 1rem;
+      font-weight: 600;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.1s;
+    }
+    button#convertBtn:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
+    button#convertBtn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+    .status-box {
+      margin-top: 1.5rem;
+      padding: 1rem;
+      border-radius: 8px;
+      font-size: 0.875rem;
+      display: none;
+    }
+    .status-box.running  { background: #1e2a1a; border: 1px solid #365314; color: #86efac; }
+    .status-box.done     { background: #1a2020; border: 1px solid #134e4a; color: #6ee7b7; }
+    .status-box.error    { background: #1f1a1a; border: 1px solid #7f1d1d; color: #fca5a5; }
+    .status-box.pending  { background: #1a1a2e; border: 1px solid #1e1b4b; color: #c4b5fd; }
+
+    .progress-bar-wrap {
+      height: 4px;
+      background: #2d2d3d;
+      border-radius: 2px;
+      overflow: hidden;
+      margin-top: 0.75rem;
+    }
+    .progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, #7c3aed, #a78bfa);
+      transition: width 0.4s ease;
+    }
+
+    .result-section {
+      margin-top: 1.5rem;
+      display: none;
+    }
+    .result-section audio {
+      width: 100%;
+      border-radius: 8px;
+      outline: none;
+      margin-bottom: 0.75rem;
+    }
+    .download-btn {
+      display: block;
+      width: 100%;
+      padding: 0.7rem;
+      background: #1f2937;
+      color: #a78bfa;
+      font-size: 0.9rem;
+      font-weight: 600;
+      border: 1px solid #374151;
+      border-radius: 8px;
+      text-align: center;
+      text-decoration: none;
+      transition: background 0.2s;
+    }
+    .download-btn:hover { background: #2d3748; }
+
+    .health-bar {
+      margin-top: 2rem;
+      font-size: 0.75rem;
+      color: #4b5563;
+      text-align: center;
+    }
+    .health-bar span { margin: 0 0.4rem; }
+    .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #374151; vertical-align: middle; margin-right: 3px; }
+    .dot.green { background: #22c55e; }
+    .dot.yellow { background: #eab308; }
+    .dot.red { background: #ef4444; }
+
+    hr.divider { border: none; border-top: 1px solid #2d2d3d; margin: 1.25rem 0; }
+  </style>
+</head>
+<body>
+
+  <h1>RVC Voice Converter</h1>
+  <p class="subtitle">Morph a voiceover to match a reference voice using RVC inference</p>
+
+  <div class="card">
+    <!-- Voiceover upload -->
+    <p class="section-label">1 · Dry Voiceover</p>
+    <div class="upload-zone" id="zone-source">
+      <input type="file" id="inputSource" accept="audio/*" />
+      <div class="upload-icon">🎙️</div>
+      <div class="upload-text">Click or drag &amp; drop your voiceover<br><small>WAV · MP3 · FLAC · OGG</small></div>
+      <div class="upload-filename" id="fname-source"></div>
+    </div>
+
+    <!-- Reference voice upload -->
+    <p class="section-label">2 · Reference Voice</p>
+    <div class="upload-zone" id="zone-reference">
+      <input type="file" id="inputReference" accept="audio/*" />
+      <div class="upload-icon">🎤</div>
+      <div class="upload-text">Click or drag &amp; drop the reference voice<br><small>More audio = better quality</small></div>
+      <div class="upload-filename" id="fname-reference"></div>
+    </div>
+
+    <hr class="divider" />
+
+    <!-- Parameters -->
+    <p class="section-label">3 · Parameters</p>
+    <div class="controls-row">
+      <div class="control-group">
+        <label>Pitch Shift <span class="range-value" id="val-pitch">0 st</span></label>
+        <input type="range" id="pitchShift" min="-12" max="12" value="0" step="1" />
+      </div>
+      <div class="control-group">
+        <label>Reference Blend <span class="range-value" id="val-blend">75%</span></label>
+        <input type="range" id="indexRatio" min="0" max="100" value="75" step="5" />
+      </div>
+    </div>
+
+    <!-- Convert button -->
+    <button id="convertBtn" disabled>Convert Voice</button>
+
+    <!-- Status -->
+    <div class="status-box" id="statusBox">
+      <span id="statusText"></span>
+      <div class="progress-bar-wrap" id="progressWrap" style="display:none">
+        <div class="progress-bar" id="progressBar" style="width:0%"></div>
+      </div>
+    </div>
+
+    <!-- Result -->
+    <div class="result-section" id="resultSection">
+      <hr class="divider" />
+      <p class="section-label">Result</p>
+      <audio id="resultAudio" controls></audio>
+      <a id="downloadLink" class="download-btn" href="#" download="converted.wav">⬇ Download WAV</a>
+    </div>
+  </div>
+
+  <!-- Health / GPU info -->
+  <div class="health-bar" id="healthBar">Checking system…</div>
+
+  <script>
+    // ── Helpers ──────────────────────────────────────────────────────────────
+    const $ = id => document.getElementById(id);
+
+    function setStatus(cls, text, showProgress = false) {
+      const box = $('statusBox');
+      box.className = 'status-box ' + cls;
+      box.style.display = 'block';
+      $('statusText').textContent = text;
+      $('progressWrap').style.display = showProgress ? 'block' : 'none';
+    }
+
+    function animateProgress() {
+      let pct = 5;
+      const bar = $('progressBar');
+      bar.style.width = pct + '%';
+      const iv = setInterval(() => {
+        // asymptotic progress so it never quite reaches 100 until done
+        pct = pct + (95 - pct) * 0.04;
+        bar.style.width = Math.min(pct, 94) + '%';
+      }, 600);
+      return iv;
+    }
+
+    // ── Drag & drop ──────────────────────────────────────────────────────────
+    ['zone-source', 'zone-reference'].forEach(zoneId => {
+      const zone = $(zoneId);
+      zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
+      zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+      zone.addEventListener('drop', e => {
+        e.preventDefault();
+        zone.classList.remove('dragover');
+        const inputId = zoneId === 'zone-source' ? 'inputSource' : 'inputReference';
+        const fnameId = zoneId === 'zone-source' ? 'fname-source' : 'fname-reference';
+        const file = e.dataTransfer.files[0];
+        if (!file) return;
+        // Assign to the hidden input via DataTransfer
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        $(inputId).files = dt.files;
+        $(fnameId).textContent = file.name;
+        checkReady();
+      });
+    });
+
+    // ── File inputs ──────────────────────────────────────────────────────────
+    $('inputSource').addEventListener('change', () => {
+      const f = $('inputSource').files[0];
+      $('fname-source').textContent = f ? f.name : '';
+      checkReady();
+    });
+    $('inputReference').addEventListener('change', () => {
+      const f = $('inputReference').files[0];
+      $('fname-reference').textContent = f ? f.name : '';
+      checkReady();
+    });
+
+    function checkReady() {
+      const ok = $('inputSource').files.length > 0 && $('inputReference').files.length > 0;
+      $('convertBtn').disabled = !ok;
+    }
+
+    // ── Range sliders ─────────────────────────────────────────────────────────
+    $('pitchShift').addEventListener('input', () => {
+      const v = parseInt($('pitchShift').value);
+      $('val-pitch').textContent = (v >= 0 ? '+' : '') + v + ' st';
+    });
+    $('indexRatio').addEventListener('input', () => {
+      $('val-blend').textContent = $('indexRatio').value + '%';
+    });
+
+    // ── Convert ───────────────────────────────────────────────────────────────
+    $('convertBtn').addEventListener('click', async () => {
+      const srcFile = $('inputSource').files[0];
+      const refFile = $('inputReference').files[0];
+      if (!srcFile || !refFile) return;
+
+      $('convertBtn').disabled = true;
+      $('resultSection').style.display = 'none';
+      setStatus('pending', 'Uploading files…', true);
+      const progIv = animateProgress();
+
+      const formData = new FormData();
+      formData.append('voiceover', srcFile);
+      formData.append('reference', refFile);
+      formData.append('pitch_shift', $('pitchShift').value);
+      formData.append('index_ratio', (parseInt($('indexRatio').value) / 100).toFixed(2));
+
+      let jobId;
+      try {
+        const res = await fetch('/api/convert', { method: 'POST', body: formData });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || 'Upload failed');
+        }
+        const data = await res.json();
+        jobId = data.job_id;
+      } catch (e) {
+        clearInterval(progIv);
+        setStatus('error', 'Upload error: ' + e.message);
+        $('convertBtn').disabled = false;
+        return;
+      }
+
+      setStatus('running', 'Converting… this may take a minute.', true);
+      poll(jobId, progIv);
+    });
+
+    async function poll(jobId, progIv) {
+      try {
+        const res = await fetch('/api/status/' + jobId);
+        const data = await res.json();
+
+        if (data.status === 'done') {
+          clearInterval(progIv);
+          $('progressBar').style.width = '100%';
+          setStatus('done', 'Done! Your converted audio is ready.');
+          const dlUrl = '/api/download/' + jobId;
+          $('resultAudio').src = dlUrl;
+          $('downloadLink').href = dlUrl;
+          $('downloadLink').download = 'converted_' + jobId + '.wav';
+          $('resultSection').style.display = 'block';
+          $('convertBtn').disabled = false;
+        } else if (data.status === 'error') {
+          clearInterval(progIv);
+          setStatus('error', 'Error: ' + data.message);
+          $('convertBtn').disabled = false;
+        } else {
+          // still running — poll again
+          setTimeout(() => poll(jobId, progIv), 1500);
+        }
+      } catch (e) {
+        clearInterval(progIv);
+        setStatus('error', 'Polling error: ' + e.message);
+        $('convertBtn').disabled = false;
+      }
+    }
+
+    // ── Health check ──────────────────────────────────────────────────────────
+    async function checkHealth() {
+      try {
+        const res = await fetch('/api/health');
+        const d = await res.json();
+        const modDot = d.models_ready ? 'green' : 'red';
+        const gpuDot = d.cuda ? 'green' : 'yellow';
+        const vramText = d.cuda
+          ? `${d.vram.device} · ${d.vram.allocated_gb} / ${d.vram.total_gb} GB VRAM`
+          : 'CPU mode';
+        $('healthBar').innerHTML =
+          `<span><span class="dot ${gpuDot}"></span>${vramText}</span>` +
+          `<span><span class="dot ${modDot}"></span>Models ${d.models_ready ? 'ready' : 'not downloaded'}</span>`;
+        if (!d.models_ready) {
+          setStatus('error', 'Models not found. Run `python download_models.py` then restart the server.');
+          $('statusBox').style.display = 'block';
+        }
+      } catch {
+        $('healthBar').textContent = 'Server unreachable';
+      }
+    }
+    checkHealth();
+  </script>
+</body>
+</html>

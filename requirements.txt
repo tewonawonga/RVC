@@ -1,0 +1,39 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# RVC Voice Conversion Web App — Python 3.10
+# GPU: NVIDIA GTX 1650 SUPER (4 GB VRAM)
+# CUDA: 11.8 or 12.1 (install PyTorch wheels separately — see setup.sh)
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Web framework
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+
+# Audio I/O & processing
+soundfile==0.12.1
+librosa==0.10.1
+scipy==1.11.4
+numpy==1.24.4
+praat-parselmouth==0.4.3
+
+# Pitch extraction
+pyworld==0.3.4
+
+# ML & feature extraction
+# NOTE: PyTorch + CUDA wheels are installed by setup.sh, not listed here
+#       to avoid pip resolving the wrong index.
+fairseq==0.12.2
+transformers==4.35.2
+huggingface_hub==0.19.4
+
+# Vector similarity search
+faiss-cpu==1.7.4          # CPU fallback; setup.sh installs faiss-gpu when CUDA available
+
+# RMVPE pitch model dependency
+einops==0.7.0
+torchcrepe==0.0.22        # optional crepe pitch extractor
+
+# Utilities
+tqdm==4.66.1
+pydantic==2.4.2
+aiofiles==23.2.1
