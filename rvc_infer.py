@@ -99,39 +99,69 @@ def f0_to_coarse(f0: np.ndarray) -> np.ndarray:
 # ──────────────────────────────────────────────────────────────────────────────
 
 class HubertFeatureExtractor:
-    """Extracts 256-dim (projected) content features using HuBERT."""
+    """
+    Extracts 256-dim content features using HuBERT via HuggingFace transformers.
+    No fairseq required. The final projection weights (768→256) are read directly
+    from the fairseq checkpoint file without importing the fairseq library.
+    """
 
     def __init__(self, model_path: str, device: str = "cuda", is_half: bool = True):
-        import fairseq
-        models, _, _ = fairseq.checkpoint_utils.load_model_ensemble_and_task(
-            [model_path], suffix=""
-        )
-        self.model = models[0]
-        self.model.eval()
+        import torch.nn as nn
+        from transformers import HubertModel, Wav2Vec2FeatureExtractor
+
         self.device = device
         self.is_half = is_half
+
+        # Base HuBERT model from HuggingFace (no fairseq needed)
+        self.processor = Wav2Vec2FeatureExtractor.from_pretrained(
+            "facebook/hubert-base-ls960"
+        )
+        self.model = HubertModel.from_pretrained(
+            "facebook/hubert-base-ls960",
+            output_hidden_states=True,
+        )
+        self.model.eval()
+
+        # Extract only the final_proj weights from the fairseq checkpoint.
+        # We only need two small tensors — no fairseq import required.
+        ckpt = torch.load(model_path, map_location="cpu")
+        state = ckpt.get("model", ckpt)
+        proj_w = state["final_proj.weight"].float()   # shape (256, 768)
+        proj_b = state["final_proj.bias"].float()     # shape (256,)
+
+        self.proj = nn.Linear(768, 256, bias=True)
+        self.proj.weight = nn.Parameter(proj_w)
+        self.proj.bias   = nn.Parameter(proj_b)
+        self.proj.eval()
+
         if is_half:
             self.model = self.model.half()
+            self.proj  = self.proj.half()
         self.model = self.model.to(device)
+        self.proj  = self.proj.to(device)
 
     @torch.no_grad()
     def extract(self, audio: np.ndarray) -> np.ndarray:
         """
         audio: float32 numpy array at 16 kHz
-        returns: (T, 768) float32
+        returns: (T, 256) float32
         """
-        feats = torch.from_numpy(audio).float()
+        inputs = self.processor(
+            audio,
+            sampling_rate=HUBERT_SAMPLE_RATE,
+            return_tensors="pt",
+            padding=True,
+        )
+        input_values = inputs.input_values
         if self.is_half:
-            feats = feats.half()
-        feats = feats.to(self.device)
-        if feats.dim() == 1:
-            feats = feats.unsqueeze(0)
-        padding_mask = torch.BoolTensor(feats.shape).fill_(False).to(self.device)
-        inputs = {"source": feats, "padding_mask": padding_mask, "output_layer": 9}
-        logits = self.model.extract_features(**inputs)
-        feats_out = self.model.final_proj(logits[0])
-        feats_out = feats_out.squeeze(0).float().cpu().numpy()
-        return feats_out  # (T, 256)
+            input_values = input_values.half()
+        input_values = input_values.to(self.device)
+
+        outputs = self.model(input_values, output_hidden_states=True)
+        # Layer 9 matches original RVC's output_layer=9 from fairseq
+        hidden = outputs.hidden_states[9]          # (1, T, 768)
+        feats  = self.proj(hidden.squeeze(0))      # (T, 256)
+        return feats.float().cpu().numpy()
 
 
 # ──────────────────────────────────────────────────────────────────────────────

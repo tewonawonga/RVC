@@ -22,7 +22,7 @@ pyworld==0.3.4
 # ML & feature extraction
 # NOTE: PyTorch + CUDA wheels are installed by setup.sh, not listed here
 #       to avoid pip resolving the wrong index.
-fairseq==0.12.2
+# HuBERT via HuggingFace transformers (replaces fairseq — no dependency conflicts)
 transformers==4.35.2
 huggingface_hub==0.19.4
 

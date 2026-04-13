@@ -28,12 +28,13 @@ PY_VER=$("$PYTHON_BIN" -c "import sys; print(f'{sys.version_info.major}.{sys.ver
 
 info "Python $PY_VER found at $(which "$PYTHON_BIN")"
 
-# Check CUDA (non-fatal)
-if command -v nvcc &>/dev/null; then
-  NVCC_VER=$(nvcc --version | grep -oP 'release \K[\d.]+')
-  info "CUDA found: nvcc $NVCC_VER"
+# Check CUDA via nvidia-smi (works in WSL2 without nvcc installed)
+if command -v nvidia-smi &>/dev/null; then
+  GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1 || echo "Unknown GPU")
+  info "NVIDIA GPU detected: $GPU_NAME — will install CUDA PyTorch ($CUDA_TAG)"
 else
-  warn "nvcc not found — will install CPU-only PyTorch. GPU acceleration disabled."
+  warn "nvidia-smi not found — installing CPU-only PyTorch (slower, no GPU)."
+  warn "If you have an NVIDIA GPU, install drivers on Windows and restart WSL."
   CUDA_TAG="cpu"
 fi
 
@@ -72,37 +73,39 @@ else
   pip install faiss-cpu==1.7.4
 fi
 
-# ── 4. Install fairseq (HuBERT) ───────────────────────────────────────────────
-info "Installing fairseq …"
-# fairseq 0.12.2 has no official PyPI wheel for Python 3.10+; install from source tag
-pip install fairseq==0.12.2 2>/dev/null || {
-  warn "fairseq PyPI install failed — installing from GitHub source …"
-  pip install "git+https://github.com/facebookresearch/fairseq.git@v0.12.2#egg=fairseq"
-}
-
-# ── 5. Install remaining requirements ────────────────────────────────────────
+# ── 4. Install remaining requirements ────────────────────────────────────────
 info "Installing Python requirements …"
-# Exclude lines that pip can't parse (comments, the torch lines we already installed)
+# Exclude comments and packages already installed above (torch, torchaudio, faiss)
 grep -v -E '^\s*#|^torch|^torchaudio|^faiss' requirements.txt \
   | pip install -r /dev/stdin
 
-# ── 6. Install RMVPE dependencies ────────────────────────────────────────────
+# ── 5. Install RMVPE dependencies ────────────────────────────────────────────
 info "Installing RMVPE …"
 pip install "git+https://github.com/yxlllc/RMVPE.git" 2>/dev/null \
   || warn "RMVPE install failed — harvest pitch extractor will be used as fallback."
 
-# ── 7. Install pyworld for harvest pitch fallback ─────────────────────────────
+# ── 6. Install pyworld for harvest pitch fallback ─────────────────────────────
 info "Installing pyworld …"
 pip install pyworld==0.3.4 2>/dev/null \
   || warn "pyworld install failed — pitch extraction may be limited."
 
-# ── 8. Create required directories ───────────────────────────────────────────
+# ── 7. Create required directories ───────────────────────────────────────────
 info "Creating application directories …"
 mkdir -p models uploads outputs static
 
-# ── 9. Download models ────────────────────────────────────────────────────────
+# ── 8. Download RVC + HuBERT models ──────────────────────────────────────────
 info "Downloading model files …"
 python download_models.py
+
+# ── 9. Pre-cache HuBERT from HuggingFace ─────────────────────────────────────
+info "Pre-downloading HuBERT from HuggingFace (this is cached for future runs) …"
+python - <<'PYEOF'
+from transformers import HubertModel, Wav2Vec2FeatureExtractor
+print("  Fetching facebook/hubert-base-ls960 …")
+Wav2Vec2FeatureExtractor.from_pretrained("facebook/hubert-base-ls960")
+HubertModel.from_pretrained("facebook/hubert-base-ls960", output_hidden_states=True)
+print("  HuBERT cached.")
+PYEOF
 
 # ── 10. Final summary ─────────────────────────────────────────────────────────
 echo ""
