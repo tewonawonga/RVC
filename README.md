@@ -1,109 +1,73 @@
-# RVC Voice Conversion Web App
+# Media Library
 
-A local web application that morphs a voiceover recording to match a reference voice using the RVC (Retrieval-based Voice Conversion) inference pipeline.
+A private team media library for audio and video files — search, transcribe, watch, and extract clips.
+
+## Features
+
+- Upload audio and video files (MP4, MOV, MP3, WAV, FLAC, and more)
+- Auto-transcription via OpenAI Whisper (runs locally)
+- Search by filename, transcript text, tags, origin date, or upload date
+- Synchronized transcript viewer — click any line to jump to that point
+- Clip extraction: mark start/end in the transcript, extract with FFmpeg
+- Dark UI built with React + Tailwind CSS
 
 ## Requirements
 
-| Component | Version |
-|-----------|---------|
-| Python | 3.10 |
-| CUDA | 11.8 or 12.1 |
-| GPU | NVIDIA GTX 1650 SUPER (4 GB VRAM) or better |
-| OS | Linux / Windows (WSL2) |
+- Python 3.10+
+- Node.js 18+
+- FFmpeg (for clip extraction)
+- ~1 GB disk for Whisper base model
 
 ## Quick Start
 
 ```bash
-# 1. Run the setup script (creates venv, installs deps, downloads models)
-bash setup.sh
-
-# 2. Activate the virtual environment
-source .venv/bin/activate
-
-# 3. Start the server
-python app.py
-
-# 4. Open in browser
-# http://localhost:7860
+chmod +x setup.sh && ./setup.sh
 ```
 
-## Manual Setup (step-by-step)
+Then in two terminals:
 
 ```bash
-# Create and activate venv
-python3.10 -m venv .venv
-source .venv/bin/activate
+# Terminal 1 — backend
+cd backend && source .venv/bin/activate && uvicorn main:app --reload
 
-# Install PyTorch for CUDA 11.8
-pip install torch==2.0.1+cu118 torchaudio==2.0.2+cu118 \
-  --extra-index-url https://download.pytorch.org/whl/cu118
-
-# Install other dependencies
-pip install -r requirements.txt
-
-# Download models (~800 MB total)
-python download_models.py
-
-# Start the app
-python app.py
+# Terminal 2 — frontend dev server
+cd frontend && npm run dev
 ```
 
-For **CUDA 12.1**, change `cu118` to `cu121` everywhere above.
+Open http://localhost:5173
 
-## How It Works
+## Configuration
 
-```
-Voiceover audio  ──►  HuBERT features  ──►  FAISS blend  ──►  RVC Generator  ──►  Output
-Reference voice  ──►  HuBERT features  ──►  FAISS index  ──┘
-```
+| Env var | Default | Description |
+|---|---|---|
+| `UPLOAD_DIR` | `./uploads` | Where uploaded files are stored |
+| `CLIPS_DIR` | `./clips` | Where extracted clips are stored |
+| `DATABASE_URL` | `sqlite:///./media_library.db` | Database connection string |
 
-1. **HuBERT** extracts 256-dim content features from both source and reference audio.
-2. A **FAISS index** is built from the reference voice features.
-3. Each source feature vector is blended with its k-nearest neighbours in the reference index — this shifts the voice timbre toward the reference.
-4. **RMVPE** (or harvest) extracts the fundamental frequency (F0 / pitch) of the source.
-5. The blended features + pitch are decoded by the **RVC v2 Generator** (VITS-based NSF decoder) into a waveform at the target sample rate.
-
-## VRAM Optimisations (GTX 1650 SUPER)
-
-- Half precision (float16) on all model tensors
-- Chunked audio processing (15-second windows with cross-fade)
-- GPU cache cleared after every chunk
-- Single-worker server to avoid concurrent GPU contention
-
-## Project Structure
+## Architecture
 
 ```
-RVC/
-├── app.py                # FastAPI server (REST API + static file serving)
-├── rvc_infer.py          # Core inference pipeline
-├── infer_pack/
-│   ├── models.py         # SynthesizerTrnMs256NSFsid (VITS/NSF generator)
-│   ├── modules.py        # ResBlock, WN, ResidualCouplingLayer, …
-│   ├── attentions.py     # Multi-head attention, FFN, Encoder
-│   └── commons.py        # Utility functions
-├── static/
-│   └── index.html        # Browser UI
-├── models/               # Downloaded model files (gitignored)
-├── uploads/              # Temporary upload storage (auto-cleaned)
-├── outputs/              # Converted audio files
-├── requirements.txt
-├── setup.sh              # One-command setup
-└── download_models.py    # Model downloader
+backend/         FastAPI app
+  main.py        Entry point, mounts routes
+  models.py      SQLAlchemy ORM models
+  database.py    DB session + init (SQLite + FTS5)
+  schemas.py     Pydantic response schemas
+  routers/
+    media.py     Upload, list, serve files
+    search.py    Full-text + metadata search
+    clips.py     Clip creation and download
+  services/
+    storage.py   File I/O helpers
+    transcription.py  Whisper in thread pool
+    clips.py     FFmpeg wrapper
+
+frontend/        React + TypeScript + Vite
+  src/
+    components/
+      LibraryPage      Grid view with search/filter
+      MediaPage        Player + transcript layout
+      MediaPlayer      HTML5 video/audio with controls
+      TranscriptPanel  Synced transcript + clip editor
+      UploadModal      Drag-and-drop upload form
+      SearchFilters    Date range + tag filters
 ```
-
-## API Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/` | Web UI |
-| `POST` | `/api/convert` | Upload files, start conversion job |
-| `GET` | `/api/status/{job_id}` | Poll job status |
-| `GET` | `/api/download/{job_id}` | Download converted WAV |
-| `GET` | `/api/health` | GPU / model readiness check |
-
-## Parameters
-
-| Parameter | Range | Default | Description |
-|-----------|-------|---------|-------------|
-| `pitch_shift` | -24 to +24 | 0 | Semitone pitch shift applied before conversion |
-| `index_ratio` | 0.0 – 1.0 | 0.75 | How strongly to blend reference voice features (1.0 = full reference) |
